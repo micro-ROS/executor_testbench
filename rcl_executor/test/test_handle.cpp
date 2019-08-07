@@ -47,6 +47,7 @@ TEST_F(TestDefaultHandle, handle_size_zero_init) {
   EXPECT_EQ(info.number_of_services, zero);
   EXPECT_EQ(info.number_of_subscriptions, zero);
   EXPECT_EQ(info.number_of_timers, zero);
+  EXPECT_EQ(info.number_of_events, zero);
 
   // test null pointer
   rc = rcle_handle_size_zero_init(NULL);

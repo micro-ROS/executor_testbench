@@ -33,14 +33,9 @@ extern "C"
     \brief RCL-Executor provides real-time scheduling policies.
 */
 
-/// Enumeration type for scheduler policies.
-typedef enum {STATIC} rcle_scheduler_t;
-
 /// Container for executor
 typedef struct
 {
-  /// Scheduler type
-  rcle_scheduler_t scheduler;
   /// Context (to get information if ROS is up-and-running)
   rcl_context_t * context;
   /// Container for dynamic array for DDS-handles
@@ -88,7 +83,6 @@ rcle_let_executor_init(
   rcle_let_executor_t * e,
   rcl_context_t * context,
   const size_t number_of_handles,
-  const rcle_scheduler_t sched,
   const rcl_allocator_t * allocator);
 
 /**
@@ -197,7 +191,7 @@ rcle_let_executor_add_timer(
  * * the timeout is defined in {@link rcle_let_executor_t.timeout_ns} and can
  *   be set by calling {@link rcle_let_executor_set_timeout()} function (default value is 100ms)
  *
- * The static-LET executor performs the following actions (STATIC executor)
+ * The static-LET executor performs the following actions:
  * * initializes the wait_set with all handle of the array executor->handles
  * * waits for new data from DDS queue with rcl_wait() with timeout executor->timeout_ns
  * * takes all ready handles from the wait_set with rcl_take()

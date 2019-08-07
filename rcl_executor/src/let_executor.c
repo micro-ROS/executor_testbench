@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include "rcl_executor/let_executor.h"
+
 #include <sys/time.h>  // for gettimeofday()
 #include <unistd.h>  // for usleep()
 
@@ -43,7 +44,7 @@ _rcle_execute(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set, size_t 
 
 static
 rcl_ret_t
-_rcle_static_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set);
+_rcle_let_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set);
 
 
 void
@@ -59,7 +60,6 @@ rcle_let_executor_init(
   rcle_let_executor_t * e,
   rcl_context_t * context,
   const size_t number_of_handles,
-  const rcle_scheduler_t sched,
   const rcl_allocator_t * allocator)
 {
   RCL_CHECK_ARGUMENT_FOR_NULL(e, RCL_RET_INVALID_ARGUMENT);
@@ -74,7 +74,6 @@ rcle_let_executor_init(
   e->context = context;
   e->max_handles = number_of_handles;
   e->index = 0;
-  e->scheduler = sched;
   e->allocator = allocator;
   e->timeout_ns = 100000000;  // default value 100ms = 100 000 000 ns
   // allocate memory for the array
@@ -129,7 +128,6 @@ rcle_let_executor_fini(rcle_let_executor_t * executor)
 
   if (executor->initialized) {
     executor->allocator->deallocate(executor->handles, executor->allocator->state);
-    executor->scheduler = NONE;
     executor->max_handles = 0;
     executor->index = 0;
     rcle_handle_size_zero_init(&executor->info);
@@ -238,7 +236,8 @@ _rcle_read_input_data(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set,
       // if handle is available, call rcl_take, which copies the message to 'msg'
       if (wait_set->subscriptions[executor->handles[i].index]) {
         rmw_message_info_t messageInfo;
-        rc = rcl_take(executor->handles[i].subscription, executor->handles[i].data, &messageInfo);
+        rc = rcl_take(executor->handles[i].subscription, executor->handles[i].data, &messageInfo,
+            NULL);
         if (rc != RCL_RET_OK) {
           PRINT_RCL_ERROR(rcle_read_input_data, rcl_take);
           return rc;
@@ -329,7 +328,7 @@ _rcle_execute(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set, size_t 
 
 static
 rcl_ret_t
-_rcle_static_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set)
+_rcle_let_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set)
 {
   RCL_CHECK_ARGUMENT_FOR_NULL(executor, RCL_RET_INVALID_ARGUMENT);
   RCL_CHECK_ARGUMENT_FOR_NULL(wait_set, RCL_RET_INVALID_ARGUMENT);
@@ -379,7 +378,8 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
   rc = rcl_wait_set_init(&wait_set, executor->info.number_of_subscriptions,
       executor->info.number_of_guard_conditions, executor->info.number_of_timers,
       executor->info.number_of_clients, executor->info.number_of_services,
-      rcl_get_default_allocator());
+      executor->info.number_of_events,
+      executor->context, rcl_get_default_allocator());
   if (rc != RCL_RET_OK) {
     PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_init);
     return rc;
@@ -442,30 +442,10 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
   // new data from DDS queue.
   rc = rcl_wait(&wait_set, timeout_ns);
 
-  // note:
-  // this leads to longer execution times
-  // every time the entire array of handles is checked now - even if no new data is available!
-  /*
-  if (rc == RCL_RET_TIMEOUT) {
-    _rcle_spin_node_once_exit(&wait_set);
-    return rc;
-  }
-  */
-
-  // schedule handles
-  switch (executor->scheduler) {
-    case STATIC:
-      rc = _rcle_static_scheduling(executor, &wait_set);
-      break;
-
-    default:
-      PRINT_RCL_ERROR(rcle_let_executor_spin_some, unknown_scheduler);
-      _rcle_spin_node_once_exit(&wait_set);
-      return RCL_RET_ERROR;
-  }
+  rc = _rcle_let_scheduling(executor, &wait_set);
 
   if (rc != RCL_RET_OK) {
-    // PRINT_RCL_ERROR is called in the sub-function _rcle_*_scheduling()
+    // PRINT_RCL_ERROR has already been called in _rcle_let_scheduling()
     _rcle_spin_node_once_exit(&wait_set);
     return rc;
   }
@@ -509,9 +489,11 @@ timeval_add(const struct timeval * a, const struct timeval * b)
  (tested with 10ms, 20ms 100ms period on Linux Ubuntu 16.04) see unit test
  sleeping only if there is time left, i.e. when the spin_some takes longer than
  period, then usleep is not called (hoping to catch up)
+
+ /// TODO (jst3si) write unit test to validate length of period
  */
 
-// #define unit_test_spin_period  // enable this define only for the Unit Test!
+// #define unit_test_spin_period  // enable this #define only for the Unit Test.
 
 rcl_ret_t
 rcle_let_executor_spin_period(rcle_let_executor_t * executor, const uint64_t period)
@@ -555,7 +537,6 @@ rcle_let_executor_spin_period(rcle_let_executor_t * executor, const uint64_t per
 
   // guarantees fixed period
   next_time = timeval_add(&start, &period_val);
-
 
   // printf("period_val %u: %u\n", (unsigned int )period_val.tv_sec,
   //    (unsigned int) period_val.tv_usec);
@@ -608,35 +589,6 @@ rcle_let_executor_spin_period(rcle_let_executor_t * executor, const uint64_t per
     // save start timepoint
     prev_start = start;
     #endif
-
-    /* NOTE: THIS IS A SIMPLE APPROACH - WHICH DID NOT YIELD SUFFICIENT ACCURACY FOR THE PERIOD
-    // the period is always between 0.3 - 0.4 milliseconds longer then specified,
-    // probably due to scheduling effects.
-
-    // measure end time
-    gettimeofday(&end, NULL);
-
-    //printf("start: %d secs, %d usecs\n",start.tv_sec,start.tv_usec);
-    //printf("end: %d secs, %d usecs\n",end.tv_sec,end.tv_usec);
-
-    secs_used=(end.tv_sec - start.tv_sec); //avoid overflow by subtracting first
-    micros_used= ((secs_used*1000000) + end.tv_usec) - (start.tv_usec);
-
-    // measure activation period
-    p_secs_used=(start.tv_sec - prev_start.tv_sec); //avoid overflow by subtracting first
-    p_micros_used= ((p_secs_used*1000000) + start.tv_usec) - (prev_start.tv_usec);
-
-    // compute average
-    period_sum += p_micros_used;
-    cnt++;
-    //printf("cnt: %d period %ld avg %lf \n",cnt, period_sum,(float) period_sum / (float) cnt );
-    if (cnt == cnt_max){
-      printf("exec-time: %ld period: %lf\n",micros_used, ((float) period_sum / (float) cnt_max)/ 1000);
-      cnt = 0;
-      period_sum = 0;
-    }
-    prev_start = start;
-   */
   }
   return ret;
 }

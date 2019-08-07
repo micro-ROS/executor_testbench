@@ -13,11 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// rcl header
 #include "rcl_executor/handle.h"
-// std headers
+
 #include <stdio.h>
-// debugging
+
 #include <rcl/error_handling.h>
 #include <rcutils/logging_macros.h>
 
@@ -31,6 +30,7 @@ rcle_handle_size_zero_init(rcle_handle_size_t * info)
   info->number_of_guard_conditions = 0;
   info->number_of_timers = 0;
   info->number_of_clients = 0;
+  info->number_of_events = 0;
   info->number_of_services = 0;
 
   return RCL_RET_OK;

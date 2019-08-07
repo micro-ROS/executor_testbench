@@ -32,7 +32,7 @@ The API of the static LET scheduler provides functions for configuration, defini
 
 ### API Description
 
-In the function `rcle_let_executor_init`, the user must specify among other things how many handles shall be scheduled and which scheduler shall be used (e.g. `STATIC`).
+In the function `rcle_let_executor_init`, the user must specify among other things how many handles shall be scheduled.
 
 The function `rcle_let_executor_set_timeout` is an optional configuration function, which defines the timeout for calling rcl_wait(), i.e. the time to wait for new data from the DDS queue. The default timeout is 100ms.
 
@@ -169,13 +169,13 @@ int main(int argc, const char * argv[])
   }
 ```
 
-**Step 7:** <a name="Step7"> </a> Create an static-let executor and initialize it with the ROS context (`context`), number of handles (`2`), type of scheduler (`STATIC`) and provide an allocator for memory allocation. (See [Step 6](#Step6) for defining the `allocator`).
+**Step 7:** <a name="Step7"> </a> Create an static-let executor and initialize it with the ROS context (`context`), number of handles (`2`) and provide an allocator for memory allocation. (See [Step 6](#Step6) for defining the `allocator`).
 
 The user can configure, when the callback shall be invoked: Options are `ALWAYS` and `ON_NEW_DATA`. If `ALWAYS` is selected, the callback is always called, even if no new data is available. In this case, the callback is given a `NULL`pointer for the argument `msgin` and the callback needs to handle this correctly. If `ON_NEW_DATA` is selected, then the callback is called only if new data from the DDS queue is available. In this case the parameter `msgin` of the callback always points to memory-allocated message.
 
 ```C
   rcle_let_executor_t exe;
-  rcle_let_executor_init(&exe, &context, 2, STATIC, &allocator);
+  rcle_let_executor_init(&exe, &context, 2, &allocator);
 ```
 
 **Step 8:** <a name="Step8"> </a> Add subscription to the executor using the subscription `sub_cmd_hello`, the message variable `msg2`, in which the new data is stored (See [Step 2](#Step2)), and the callback function `cmd_hello_callback`(See [Step 5](#Step5)).

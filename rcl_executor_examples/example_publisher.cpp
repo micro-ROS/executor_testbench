@@ -22,20 +22,17 @@
 
 using namespace std::chrono_literals;
 
-/* We do not recommend this style anymore, because composition of multiple
- * nodes in the same executable is not possible. Please see one of the subclass
- * examples for the "new" recommended styles. This example is only included
- * for completeness because it is similar to "classic" standalone ROS nodes. */
-
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
   auto node = rclcpp::Node::make_shared("rt_exectutor_test_publisher");
-  auto publisher = node->create_publisher<std_msgs::msg::String>("cmd_hello");
+  auto publisher = node->create_publisher<std_msgs::msg::String>("cmd_hello",
+      rclcpp::SystemDefaultsQoS());
   auto message = std::make_shared<std_msgs::msg::String>();
   auto publish_count = 0;
 
-  auto publisher2 = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel");
+  auto publisher2 = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel",
+      rclcpp::SystemDefaultsQoS());
   auto message2 = std::make_shared<geometry_msgs::msg::Twist>();
 
 
@@ -45,13 +42,13 @@ int main(int argc, char * argv[])
     // topic cmd_hello
     message->data = "Hello, world! " + std::to_string(publish_count);
     RCLCPP_INFO(node->get_logger(), "Publishing cmd_hello: '%s'", message->data.c_str());
-    publisher->publish(message);
+    publisher->publish(*message);
 
     // topic cmd_vel
     message2->linear.x = publish_count;
     message2->angular.z = publish_count;
     RCLCPP_INFO(node->get_logger(), "Publishing: cmd_vel '%.2f'", message2->linear.x);
-    publisher2->publish(message2);
+    publisher2->publish(*message2);
 
     // update counter
     publish_count++;

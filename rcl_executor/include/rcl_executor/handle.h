@@ -96,6 +96,8 @@ typedef struct
   size_t number_of_clients;
   /// Total number of services
   size_t number_of_services;
+  /// Total number of events
+  size_t number_of_events;
 } rcle_handle_size_t;
 
 

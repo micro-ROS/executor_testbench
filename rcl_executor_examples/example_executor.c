@@ -197,7 +197,7 @@ int main(int argc, const char * argv[])
     }
 
     rcle_let_executor_t exe;
-    rcle_let_executor_init(&exe, &context, 10, STATIC, &allocator);
+    rcle_let_executor_init(&exe, &context, 10, &allocator);
 
     rc = rcle_let_executor_add_subscription(&exe, &sub_cmd_vel, &msg1, &cmd_vel_callback,
         ON_NEW_DATA);
