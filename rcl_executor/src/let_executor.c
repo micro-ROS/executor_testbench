@@ -18,18 +18,6 @@
 #include <sys/time.h>  // for gettimeofday()
 #include <unistd.h>  // for usleep()
 
-static
-inline
-void
-_rcle_spin_node_once_exit(rcl_wait_set_t * wait_set)
-{
-  rcl_ret_t rc = rcl_wait_set_fini(wait_set);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(spin_node_once_exit, rcl_wait_set_fini);
-  }
-}
-
-
 // declarations of helper functions
 
 /// get new data from DDS queue for handle i
@@ -74,6 +62,10 @@ rcle_let_executor_init(
   e->context = context;
   e->max_handles = number_of_handles;
   e->index = 0;
+
+  // e->wait_set willl be initialized only once in the rcle_executor_spin_some function
+  e->wait_set_initialized = false;
+  
   e->allocator = allocator;
   e->timeout_ns = 100000000;  // default value 100ms = 100 000 000 ns
   // allocate memory for the array
@@ -131,6 +123,17 @@ rcle_let_executor_fini(rcle_let_executor_t * executor)
     executor->max_handles = 0;
     executor->index = 0;
     rcle_handle_size_zero_init(&executor->info);
+
+    // free memory of wait_set if it has been initialized
+    // calling it with un-initialized wait_set will fail.
+    if (executor->wait_set_initialized) {
+      rcl_ret_t rc = rcl_wait_set_fini(&executor->wait_set);
+      if (rc != RCL_RET_OK) {
+        PRINT_RCL_ERROR(rcle_let_executor_fini, rcl_wait_set_fini);
+      }
+      executor->wait_set_initialized = false;
+    }
+
     executor->initialized = false;
     // todo(jst3si) reset timeout to default value
   } else {
@@ -372,26 +375,26 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
   RCL_CHECK_ARGUMENT_FOR_NULL(executor, RCL_RET_INVALID_ARGUMENT);
   RCUTILS_LOG_DEBUG_NAMED(ROS_PACKAGE_NAME, "spin");
 
-  // TODO(jst3si) initialization (should be done ONLY ONCE see docu at wait_set.h )
+  // the wait_set is initialized only once (aka in the first call of this function)
+  if (executor->wait_set_initialized == false) {
+    executor->wait_set = rcl_get_zero_initialized_wait_set();
+    rc = rcl_wait_set_init(&executor->wait_set, executor->info.number_of_subscriptions,
+        executor->info.number_of_guard_conditions, executor->info.number_of_timers,
+        executor->info.number_of_clients, executor->info.number_of_services,
+        executor->info.number_of_events,
+        executor->context, rcl_get_default_allocator());
+    if (rc != RCL_RET_OK) {
+      PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_init);
+      return rc;
+    }
 
-  rcl_wait_set_t wait_set = rcl_get_zero_initialized_wait_set();
-  rc = rcl_wait_set_init(&wait_set, executor->info.number_of_subscriptions,
-      executor->info.number_of_guard_conditions, executor->info.number_of_timers,
-      executor->info.number_of_clients, executor->info.number_of_services,
-      executor->info.number_of_events,
-      executor->context, rcl_get_default_allocator());
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_init);
-    return rc;
+    executor->wait_set_initialized = true;
   }
 
-  // TODO(jst3si) here should the do-while loop start ...
-
   // set rmw fields to NULL
-  rc = rcl_wait_set_clear(&wait_set);
+  rc = rcl_wait_set_clear(&executor->wait_set);
   if (rc != RCL_RET_OK) {
     PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_clear);
-    _rcle_spin_node_once_exit(&wait_set);
     return rc;
   }
 
@@ -402,11 +405,10 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
     switch (executor->handles[i].type) {
       case SUBSCRIPTION:
         // add subscription to wait_set and save index
-        rc = rcl_wait_set_add_subscription(&wait_set, executor->handles[i].subscription,
+        rc = rcl_wait_set_add_subscription(&executor->wait_set, executor->handles[i].subscription,
             &executor->handles[i].index);
         if (rc != RCL_RET_OK) {
           PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_add_subscription);
-          _rcle_spin_node_once_exit(&wait_set);
           return rc;
         } else {
           RCUTILS_LOG_DEBUG_NAMED(ROS_PACKAGE_NAME,
@@ -417,11 +419,10 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
 
       case TIMER:
         // add timer to wait_set and save index
-        rc = rcl_wait_set_add_timer(&wait_set, executor->handles[i].timer,
+        rc = rcl_wait_set_add_timer(&executor->wait_set, executor->handles[i].timer,
             &executor->handles[i].index);
         if (rc != RCL_RET_OK) {
           PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_add_timer);
-          _rcle_spin_node_once_exit(&wait_set);
           return rc;
         } else {
           RCUTILS_LOG_DEBUG_NAMED(ROS_PACKAGE_NAME, "Timer added to wait_set_timers[%ld]",
@@ -433,25 +434,21 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
         RCUTILS_LOG_DEBUG_NAMED(ROS_PACKAGE_NAME, "Error: unknown handle type: %d",
           executor->handles[i].type);
         PRINT_RCL_ERROR(rcle_let_executor_spin_some, rcl_wait_set_unknown_handle);
-        _rcle_spin_node_once_exit(&wait_set);
         return RCL_RET_ERROR;
     }
   }
 
   // wait up to 'timeout_ns' to receive notification about which handles reveived
   // new data from DDS queue.
-  rc = rcl_wait(&wait_set, timeout_ns);
+  rc = rcl_wait(&executor->wait_set, timeout_ns);
 
-  rc = _rcle_let_scheduling(executor, &wait_set);
+  rc = _rcle_let_scheduling(executor, &executor->wait_set);
 
   if (rc != RCL_RET_OK) {
     // PRINT_RCL_ERROR has already been called in _rcle_let_scheduling()
-    _rcle_spin_node_once_exit(&wait_set);
     return rc;
   }
 
-  // finalize (calls rcl_wait_set_fini)
-  _rcle_spin_node_once_exit(&wait_set);
   return rc;
 }
 

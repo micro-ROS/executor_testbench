@@ -52,6 +52,7 @@ TEST_F(TestDefaultHandle, handle_size_zero_init) {
   // test null pointer
   rc = rcle_handle_size_zero_init(NULL);
   EXPECT_EQ(rc, RCL_RET_INVALID_ARGUMENT);
+  rcutils_reset_error();
 }
 
 TEST_F(TestDefaultHandle, handle_init) {
