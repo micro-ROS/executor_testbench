@@ -242,7 +242,13 @@ _rcle_read_input_data(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set,
         rc = rcl_take(executor->handles[i].subscription, executor->handles[i].data, &messageInfo,
             NULL);
         if (rc != RCL_RET_OK) {
-          PRINT_RCL_ERROR(rcle_read_input_data, rcl_take);
+
+          // it is documented, that rcl_take might return this error, even when rcl_wait reported new data
+          if ( rc != RCL_RET_SUBSCRIPTION_TAKE_FAILED) {
+            PRINT_RCL_ERROR(rcle_read_input_data, rcl_take);
+            RCUTILS_LOG_ERROR_NAMED(ROS_PACKAGE_NAME, "Error number: %d",rc);
+          }
+
           return rc;
         }
         executor->handles[i].data_available = true;
@@ -350,7 +356,7 @@ _rcle_let_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set)
   // complexity: O(n) where n denotes the number of handles
   for (size_t i = 0; (i < executor->max_handles && executor->handles[i].initialized); i++) {
     rc = _rcle_read_input_data(executor, wait_set, i);
-    if (rc != RCL_RET_OK) {
+    if ((rc != RCL_RET_OK) &&  (rc != RCL_RET_SUBSCRIPTION_TAKE_FAILED)) {
       return rc;
     }
   }  // for-loop
