@@ -318,6 +318,7 @@ void timer_0_callback(rcl_timer_t * timer, int64_t last_call_time)
     // todo publish the timers corresponding to the timer
 }
 
+/* helper function to parse program line */
 typedef struct {
     unsigned int pubs;
     unsigned int subs;
@@ -329,57 +330,54 @@ typedef struct {
     unsigned int rate;
     unsigned int msg_size;
     unsigned int num_nodes;
-    conf_node_t  * nodes;
+    conf_node_t  * * nodes;
 } conf_t;
 
-/******************** MAIN PROGRAM **************************************/
-int main(int argc, const char * argv[])
-{
-    rcl_ret_t rc;
-
-    // parse command arguments
-    // rate msgSize #nodes node #pub #sub topic_i ... topic_j
-    conf_t conf;
-    int i = 0;
+/* parses arguments and saves configuration in conf object
+   memory is allocated with calloc for a node, list of publishers, list of subscribers
+   return value: 0 success -1 failure
+*/
+int parse_args(int argc, const char * argv[], conf_t * conf) {
+ int i = 0;
     if (argc < 4) { 
         printf("Usage: %s rate message_size number_nodes [node number_publisher number_subscriber [topic_id]*]*\n", argv[0]); 
         return -1;
     }
-    if (sscanf (argv[1], "%u", &conf.rate) != 1) {
+    if (sscanf (argv[1], "%u", &conf->rate) != 1) {
         fprintf(stderr, "error - not an integer");
+        return -1;
     }   
 
-    if (sscanf (argv[2], "%u", &conf.msg_size) != 1) {
+    if (sscanf (argv[2], "%u", &conf->msg_size) != 1) {
         fprintf(stderr, "error - not an integer");
+        return -1;
     } 
     
-    if (sscanf (argv[3], "%u", &conf.num_nodes) != 1) {
+    if (sscanf (argv[3], "%u", &conf->num_nodes) != 1) {
         fprintf(stderr, "error - not an integer");
+        return -1;
     } 
 
-    conf.nodes = calloc(conf.num_nodes, sizeof(conf_node_t));
+    conf->nodes = calloc(conf->num_nodes, sizeof(conf_node_t *));
 
-
-    printf("Arguments: rate %d msg_size %d #nodes %d\n", conf.rate, conf.msg_size, conf.num_nodes);
-
+    printf("Arguments: rate %d msg_size %d #nodes %d\n", conf->rate, conf->msg_size, conf->num_nodes);
     // argv[4]='node'
     i = 4;
-    for(unsigned int node_index = 0; node_index < conf.num_nodes; node_index++)
+    for(unsigned int node_index = 0; node_index < conf->num_nodes; node_index++)
     {
-
-
         if ( strcmp( argv[i], "node") == 0) {
             conf_node_t * node = calloc(1, sizeof(conf_node_t));
             i++;
 
-
             if (sscanf (argv[i], "%u", &node->pubs) != 1) {
                 fprintf(stderr, "error - #pubs not an integer");
+                return -1;
             } 
             i++;
 
             if (sscanf (argv[i], "%u", &node->subs) != 1) {
                 fprintf(stderr, "error - #subs not an integer");
+                return -1;
             } 
             i++;
 
@@ -391,47 +389,79 @@ int main(int argc, const char * argv[])
             }
 
             for(unsigned int p=0; p<node->pubs; p++) {
-
                 if (sscanf (argv[i], "%u", &node->pub_names[p]) != 1) {
                     fprintf(stderr, "error - topic_name (publisher) is not an integer");
+                    return -1;
                 } 
                 i++;
             }
             for(unsigned int s=0; s<node->subs; s++) {
-
                 if (sscanf (argv[i], "%u", &node->sub_names[s]) != 1) {
                     fprintf(stderr, "error - topic_name (subscriber) is not an integer");
+                    return -1;
                 } 
                 i++;
             }
   
-            conf.nodes[node_index] = (*node);
+            conf->nodes[node_index] = node;
   
         } else {
             printf("Error: wrong arguments in node-configuration\n");
             return -1;
         }
     }
+  return 0;
+}
 
-    for(unsigned int node_index = 0; node_index < conf.num_nodes; node_index++)
+void print_configuration(conf_t * conf) {
+    for(unsigned int node_index = 0; node_index < conf->num_nodes; node_index++)
     {
         printf("node %u ", node_index);
         
         printf("pub: ");
-        for(unsigned int i=0; i < conf.nodes[node_index].pubs; i++) {
-            printf("%u ", conf.nodes[node_index].pub_names[i]);
+        for(unsigned int i=0; i < conf->nodes[node_index]->pubs; i++) {
+            printf("%u ", conf->nodes[node_index]->pub_names[i]);
         }
 
         printf(" sub: ");
-        for(unsigned int i=0; i < conf.nodes[node_index].subs; i++) {
-            printf("%u ", conf.nodes[node_index].sub_names[i]);
+        for(unsigned int i=0; i < conf->nodes[node_index]->subs; i++) {
+            printf("%u ", conf->nodes[node_index]->sub_names[i]);
         }
         printf("\n");
     }
+}
 
-    return 0;
+/* clean-up memory of conf object
+*/
+int conf_fini(conf_t * conf) {
 
+  for(unsigned int n=0; n < conf->num_nodes; n++) {
+      // free list of publishers
+      free (conf->nodes[n]->pub_names);
+      // free list of subscribers
+      free (conf->nodes[n]->sub_names);
+      // free node itself
+      free (conf->nodes[n]);
+  }
+  // free node-list
+  free(conf->nodes);
+}
+/******************** MAIN PROGRAM **************************************/
+int main(int argc, const char * argv[])
+{
+    rcl_ret_t rc;
+
+    // parse command arguments
+    conf_t conf;
   
+    if( parse_args( argc, argv, &conf) != 0) {
+       printf("Error while parsing arguments.\n");
+       return -1;
+    }
+
+    print_configuration(&conf);
+
+    conf_fini( &conf);
 
 /*
     rcl_allocator_t allocator = rcl_get_default_allocator();
@@ -572,7 +602,7 @@ int main(int argc, const char * argv[])
     rc = rcl_timer_fini_wrapper(&init_obj, timer1);
     rc = rcl_node_fini_wrapper(&init_obj, node0);
     rc = rcl_init_options_fini(&init_obj);
-
+*/
     return 0;
-    */
+    
 }
