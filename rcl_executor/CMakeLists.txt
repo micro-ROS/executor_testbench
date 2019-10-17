@@ -20,6 +20,15 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+
+# for performance tracing 
+# see https://gitlab.com/micro-ROS/ros_tracing/ros2_perf_analysis/tree/feature/simple-analysis/scripts
+add_compile_options(-finstrument-functions 
+-fplugin=/home/jst3si/micro-ros/src/instrument-attribute-gcc-plugin/instrument_attribute.so
+-fplugin-arg-instrument_attribute-debug)
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 #################################################
 # package dependencies
 #################################################

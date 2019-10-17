@@ -43,7 +43,7 @@ _rcle_print_handles(rcle_let_executor_t * executor)
   }
 }
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_init(
   rcle_let_executor_t * e,
   rcl_context_t * context,
@@ -94,7 +94,7 @@ rcle_let_executor_init(
   return ret;
 }
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_set_timeout(rcle_let_executor_t * executor, const uint64_t timeout_ns)
 {
   RCL_CHECK_FOR_NULL_WITH_MSG(
@@ -109,7 +109,7 @@ rcle_let_executor_set_timeout(rcle_let_executor_t * executor, const uint64_t tim
   return ret;
 }
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_fini(rcle_let_executor_t * executor)
 {
   RCL_CHECK_FOR_NULL_WITH_MSG(
@@ -144,7 +144,7 @@ rcle_let_executor_fini(rcle_let_executor_t * executor)
 }
 
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_add_subscription(
   rcle_let_executor_t * executor,
   rcl_subscription_t * subscription,
@@ -184,7 +184,7 @@ rcle_let_executor_add_subscription(
 }
 
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_add_timer(
   rcle_let_executor_t * executor,
   rcl_timer_t * timer)
@@ -224,7 +224,7 @@ rcle_let_executor_add_timer(
  * - and sets executor->handles[i].data_available = true
  */
 static
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 _rcle_read_input_data(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set, size_t i)
 {
   RCL_CHECK_ARGUMENT_FOR_NULL(executor, RCL_RET_INVALID_ARGUMENT);
@@ -289,7 +289,7 @@ _rcle_read_input_data(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set,
  * - calls every callback of each object depending on its type
  */
 static
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 _rcle_execute(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set, size_t i)
 {
   RCL_CHECK_ARGUMENT_FOR_NULL(executor, RCL_RET_INVALID_ARGUMENT);
@@ -374,7 +374,7 @@ _rcle_let_scheduling(rcle_let_executor_t * executor, rcl_wait_set_t * wait_set)
   return rc;
 }
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeout_ns)
 {
   rcl_ret_t rc = RCL_RET_OK;
@@ -458,11 +458,12 @@ rcle_let_executor_spin_some(rcle_let_executor_t * executor, const uint64_t timeo
   return rc;
 }
 
-rcl_ret_t
+rcl_ret_t __attribute__((instrument_function))
 rcle_let_executor_spin(rcle_let_executor_t * executor)
 {
   RCL_CHECK_ARGUMENT_FOR_NULL(executor, RCL_RET_INVALID_ARGUMENT);
   rcl_ret_t ret = RCL_RET_OK;
+  printf("INFO: rcl_wait timeout %ld ms\n", ((executor->timeout_ns / 1000) / 1000));
   while (rcl_context_is_valid(executor->context) ) {
     ret = rcle_let_executor_spin_some(executor, executor->timeout_ns);
     if (!((ret == RCL_RET_OK) || (ret == RCL_RET_TIMEOUT))) {

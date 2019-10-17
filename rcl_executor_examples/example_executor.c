@@ -25,7 +25,8 @@
 
 
 // callback for topic "cmd_hello"
-void cmd_hello_callback(const void * msgin)
+void __attribute__((instrument_function))
+cmd_hello_callback(const void * msgin)
 {
   const std_msgs__msg__String * msg = (const std_msgs__msg__String *)msgin;
 
@@ -43,7 +44,8 @@ void cmd_hello_callback(const void * msgin)
 
 // callback for topic "cmd_vel"
 int numberMsgCmdVel = 0;
-void cmd_vel_callback(const void * msgin)  // TwistConstPtr
+void __attribute__((instrument_function))
+cmd_vel_callback(const void * msgin)  // TwistConstPtr
 {
   const geometry_msgs__msg__Twist * twist = (const geometry_msgs__msg__Twist *)msgin;
   numberMsgCmdVel++;
@@ -64,7 +66,8 @@ void cmd_vel_callback(const void * msgin)  // TwistConstPtr
 }
 
 // timer callback
-void my_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
+void __attribute__((instrument_function))
+my_timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
   // Do timer work...
   // Optionally reconfigure, cancel, or reset the timer...
