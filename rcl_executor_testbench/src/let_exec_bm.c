@@ -319,6 +319,7 @@ typedef struct {
 int parse_args(int argc, const char * argv[], conf_t * conf) {
   int i = 0;
   if (argc < 4) { 
+    printf("Error: too few arguments missing: %d\n", 4-argc);
     printf("Usage: %s rate message_size number_nodes \
     [node number_publisher number_subscriber [topic_id]*]*\n", argv[0]); 
     return -1;
