@@ -34,8 +34,9 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 find_package(ament_cmake_ros REQUIRED)
 find_package(rcl REQUIRED)
-find_package(std_msgs REQUIRED)
+find_package(rcl_wrapper REQUIRED)
 find_package(rcl_executor REQUIRED)
+find_package(std_msgs REQUIRED)
 
 #################################################
 # include directories
@@ -47,7 +48,7 @@ include_directories(include)
 #################################################
 
 add_executable(rcl_executor_testbench src/let_exec_bm.c)
-ament_target_dependencies(rcl_executor_testbench rcl rcl_executor std_msgs)
+ament_target_dependencies(rcl_executor_testbench rcl rcl_wrapper rcl_executor std_msgs)
 
 install(TARGETS
   rcl_executor_testbench

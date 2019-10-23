@@ -14,22 +14,9 @@
 // limitations under the License.
 
 #include "rcl_executor/let_executor.h"
+#include "rcl_wrapper/rcl_wrapper.h"
 #include <std_msgs/msg/string.h>
-// #include <unistd.h> // for usleep()
-
-
-
-/*** rcl convenience functions ***/
-
-/* helper data structure for rcl interface 
-  init object which is useful for simplifying calls to rcl.
-*/
-typedef struct {
-  rcl_init_options_t init_options;
-  rcl_context_t context;
-  rcl_allocator_t * allocator;
-  rcl_clock_t clock;
-} rcl_init_wrapper_t;
+// #include <unistd.h> // for usleep
 
 /* helper data structure for rcl interface 
    to save the node with its publishers and subscribers
@@ -44,251 +31,6 @@ typedef struct {
   std_msgs__msg__String ** subs_msg; // list of msgs of the subscribers
   rcl_timer_t * timer; // timer for publishers
 } rcl_node_wrapper_t;
-
-
-/* assignes modifies init_obj */
-rcl_ret_t
-rcl_init_wrapper(
-    rcl_init_wrapper_t * init_obj,
-    int argc, 
-    char const * const * argv, 
-    rcl_allocator_t * allocator)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-    init_obj, "init_obj is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  rcl_ret_t rc = RCL_RET_OK;
-
-  init_obj->init_options = rcl_get_zero_initialized_init_options();
-  rc = rcl_init_options_init(&init_obj->init_options, (*allocator) );
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_init_wrapper, rcl_init_options_init);
-    return rc;
-  }
-
-  init_obj->context = rcl_get_zero_initialized_context();
-  rc = rcl_init(argc, argv, &init_obj->init_options, &init_obj->context);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_init_wrapper, rcl_init);
-    return rc;
-  }
-  init_obj->allocator = allocator;
-  return rc;
-}
-
-rcl_node_t *
-rcl_create_node_wrapper(
-    const char * name, 
-    const char * namespace_, 
-    rcl_init_wrapper_t * init_obj)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  name, "name is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  namespace_, "namespace_ is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  init_obj, "init_obj is a null pointer", return NULL);
-
-  rcl_ret_t rc;
-  rcl_node_t * node = init_obj->allocator->allocate( sizeof(rcl_node_t), init_obj->allocator->state);
-  if ( node != NULL){
-    (*node) = rcl_get_zero_initialized_node();
-    // node_ops is copied to ...->impl->node-options, therefore temporary scope sufficient
-    rcl_node_options_t node_ops = rcl_node_get_default_options();  
-    rc = rcl_node_init(node, name, namespace_, 
-      &init_obj->context, &node_ops);
-    if (rc != RCL_RET_OK) {
-      init_obj->allocator->deallocate( node, init_obj->allocator->state );
-      PRINT_RCL_ERROR(rcl_create_node_wrapper, rcl_node_init);
-      return NULL;
-    } 
-  }
-  return node;
-}
-
-rcl_ret_t
-rcl_node_fini_wrapper(rcl_init_wrapper_t * init_obj, rcl_node_t * node)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  node, "node is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-
-  // clean-up rcl_node_t
-  rcl_ret_t rc = rcl_node_fini(node);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_node_fini_wrapper, rcl_node_fini);
-  }
-
-  // de-allocate node itself
-  init_obj->allocator->deallocate(node, init_obj->allocator->state);
-
-  return rc;
-}
-
-// todo where is type_support free-ed again?
-
-rcl_publisher_t *
-rcl_create_publisher_wrapper(
-  const rcl_node_t * node,
-  rcl_allocator_t * allocator,
-  const rosidl_message_type_support_t * type_support,
-  const char * topic_name)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  node, "node is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  allocator, "allocator is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  type_support, "type_support is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  topic_name, "topic_name is a null pointer", return NULL);
-
-  rcl_publisher_t * pub =  allocator->allocate( 
-    sizeof(rcl_publisher_t), allocator->state);
-  (*pub) = rcl_get_zero_initialized_publisher();
-  rcl_publisher_options_t pub_opt = rcl_publisher_get_default_options();
-  rcl_ret_t rc = rcl_publisher_init(
-    pub,
-    node,
-    type_support,
-    topic_name,
-    &pub_opt);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_create_publisher_wrapper, rcl_publisher_init);
-    allocator->deallocate( pub, allocator->state);
-    return NULL;
-  }
-  return pub;
-}
-
-rcl_ret_t
-rcl_publisher_fini_wrapper(rcl_init_wrapper_t * init_obj, rcl_publisher_t * publisher, rcl_node_t * node)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  init_obj, "init_obj is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  publisher, "publisher is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  rcl_ret_t rc;
-
-  // clean-up publisher
-  rc = rcl_publisher_fini(publisher, node);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_publisher_fini, rcl_publisher_fini);
-  }
-
-  // de-allocate publisher itself
-  init_obj->allocator->deallocate(publisher, init_obj->allocator->state);
-  return rc;
-}
-
-
-rcl_subscription_t *
-rcl_create_subscription_wrapper(
-  rcl_node_t * node,
-  rcl_allocator_t * allocator,
-  const rosidl_message_type_support_t * type_support,
-  const char * topic_name)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  node, "node is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  allocator, "allocator is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  type_support, "type_support is a null pointer", return NULL);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  topic_name, "topic_name is a null pointer", return NULL);
-
-  rcl_subscription_t * sub = allocator->allocate( sizeof(rcl_subscription_t), allocator->state);
-  (*sub) = rcl_get_zero_initialized_subscription();
-  rcl_subscription_options_t sub_ops = rcl_subscription_get_default_options();
-  rcl_ret_t rc = rcl_subscription_init(
-    sub,
-    node,
-    type_support,
-    topic_name,
-    &sub_ops);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_create_subscription_wrapper, rcl_subscription_init);
-    allocator->deallocate( sub, allocator->state);
-    return NULL;
-  }
-  return sub;
-}
-
-rcl_ret_t
-rcl_subscription_fini_wrapper(rcl_init_wrapper_t * init_obj, rcl_subscription_t * subscription, rcl_node_t * node)
-{
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  init_obj, "init_obj is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  subscription, "subscription is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  node, "node is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-
-  // de-allocate memory inside subscription
-  rcl_ret_t rc = rcl_subscription_fini(subscription, node);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_subscription_wrapper, rcl_subscription_fini);
-  }
-
-  // de-allocate subscription itself
-  init_obj->allocator->deallocate(subscription, init_obj->allocator->state);
-  return rc;
-}
-
-rcl_timer_t *
-rcl_create_timer_wrapper(
-  rcl_init_wrapper_t * init_obj,
-  const uint64_t timeout_ns,
-  const rcl_timer_callback_t callback) {
-
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  init_obj, "node is a null pointer", return NULL);  
-
-  rcl_ret_t rc;
-  rcl_timer_t * timer = init_obj->allocator->allocate( sizeof(rcl_timer_t),
-    init_obj->allocator->state);
-
-  rc = rcl_clock_init(RCL_STEADY_TIME, &init_obj->clock, init_obj->allocator);
-  if (rc != RCL_RET_OK) {
-      PRINT_RCL_ERROR(rcl_create_timer_wrapper, rcl_clock_init);
-      init_obj->allocator->deallocate( timer, init_obj->allocator->state );
-      return NULL;
-  }
-
-  (*timer) = rcl_get_zero_initialized_timer();
-  rc = rcl_timer_init(timer, &init_obj->clock, &init_obj->context, timeout_ns,
-      callback, (*init_obj->allocator));
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rclc_create_timer, rcl_timer_init);
-    return NULL;
-  } else {
-    RCUTILS_LOG_INFO("Created a timer with period %ld ms.\n", timeout_ns/1000000);
-  }
-
-  return timer;
-}
-
-/* deallocates memory of timer and the timer itself */
-rcl_ret_t
-rcl_timer_fini_wrapper(rcl_init_wrapper_t * init_obj, rcl_timer_t * timer) {
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  init_obj, "init_obj is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  RCL_CHECK_FOR_NULL_WITH_MSG(
-  timer, "timer is a null pointer", return RCL_RET_INVALID_ARGUMENT);
-  rcl_ret_t rc;
-
-  //de-allocate the memory within rcl_timer_t
-  rc = rcl_timer_fini(timer);
-  if (rc != RCL_RET_OK) {
-    PRINT_RCL_ERROR(rcl_timer_fini_wrapper, rcl_timer_fini);
-  }
-  //de-allocate the timer itself
-  init_obj->allocator->deallocate( timer, init_obj->allocator->state);
-  return rc;
-}
-
-
-
-
 
 
 /* helper function to parse program line */
@@ -306,9 +48,6 @@ typedef struct {
     unsigned int num_nodes;
     conf_node_t  * * nodes;
 } conf_t;
-
-
-
 
 /* parses arguments and saves configuration in conf object
    memory is allocated with calloc for a node, list of publishers, list of subscribers
@@ -432,9 +171,6 @@ void configuration_fini(conf_t * conf) {
   // free node-list
   free(conf->nodes);
 }
-
-
-
 
 /* testbench for rcl_executor
    - generation of rcl_nodes with publishers and subscribers

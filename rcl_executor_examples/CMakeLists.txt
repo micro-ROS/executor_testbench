@@ -20,10 +20,11 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl REQUIRED)
+find_package(rcl_wrapper REQUIRED)
+find_package(rcl_executor REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(rcl REQUIRED)
-find_package(rcl_executor REQUIRED)
 
 
 add_executable(example_publisher example_publisher.cpp)
@@ -32,9 +33,13 @@ ament_target_dependencies(example_publisher rclcpp std_msgs geometry_msgs)
 add_executable(example_executor example_executor.c)
 ament_target_dependencies(example_executor rcl rcl_executor std_msgs geometry_msgs)
 
+add_executable(example_rcl_wrapper rcl_wrapper_example.c)
+ament_target_dependencies(example_rcl_wrapper rcl rcl_wrapper rcl_executor std_msgs)
+
 install(TARGETS
   example_publisher
   example_executor
+  example_rcl_wrapper
   DESTINATION lib/${PROJECT_NAME}
 )
 
