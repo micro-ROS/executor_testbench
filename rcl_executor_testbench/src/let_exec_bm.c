@@ -24,9 +24,11 @@
 
 typedef struct {
   rcl_node_t * rcl_node;  // rcl_node
+  unsigned int id; // node id
   unsigned int num_pubs; // number of publishers
   unsigned int num_subs; // number of subscribers
   rcl_publisher_t ** pubs;  // list of publishers
+  unsigned int * pub_names; // list of topic ids of the publishers
   rcl_subscription_t ** subs;  // list of subscribers
   std_msgs__msg__String ** subs_msg; // list of msgs of the subscribers
   rcl_timer_t * timer; // timer for publishers
@@ -35,6 +37,7 @@ typedef struct {
 
 /* helper function to parse program line */
 typedef struct {
+    unsigned int id;
     unsigned int num_pubs;
     unsigned int num_subs;
     unsigned int * pub_names;
@@ -60,7 +63,11 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
   if (argc < 4) { 
     printf("Error: too few arguments missing: %d\n", 4-argc);
     printf("Usage: %s rate message_size number_nodes \
-    [node number_publisher number_subscriber [topic_id]*]*\n", argv[0]); 
+    ['node' id number_publisher number_subscriptions [topic_id]*]*\n \
+    Note: for each node specify node-id, number of publishers(p) and number subscriptions(s). \n Then follows a ordered list of topic-ids. \
+    The first p topic-id are topic names for the publishers, the next s topic-ids are topic name for the subscriptions.\n \
+    Example 1:node 0 1 1 3 4 => node_0 with one publisher and one subscriptions \
+    publisher topic='topic_3', subscription topic='topic_4'\nExample 2: node 1 2 0 3 4 => node_1 with two publishers with the topic names 'topic_3' and 'topic_4'.\n", argv[0]); 
     return -1;
   }
   if (sscanf (argv[1], "%u", &conf->rate) != 1) {
@@ -93,6 +100,12 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
   for(unsigned int node_index = 0; node_index < conf->num_nodes; node_index++) {
     if ( strcmp( argv[i], "node") == 0) {
       conf_node_t * node = calloc(1, sizeof(conf_node_t));
+      i++;
+
+      if (sscanf (argv[i], "%u", &node->id) != 1) {
+        fprintf(stderr, "error - node-id not an integer");
+        return -1;
+      } 
       i++;
 
       if (sscanf (argv[i], "%u", &node->num_pubs) != 1) {
@@ -142,7 +155,7 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
 void print_configuration(conf_t * conf) {
   for(unsigned int node_index = 0; node_index < conf->num_nodes; node_index++)
   {
-    printf("node %u ", node_index);
+    printf("node %u ", conf->nodes[node_index]->id);
     
     printf("pub: ");
     for(unsigned int i=0; i < conf->nodes[node_index]->num_pubs; i++) {
@@ -223,9 +236,10 @@ timer_callback(rcl_timer_t * timer, int64_t last_call_time)
           rc = rcl_publish(nodes[n].pubs[p], &pub_msg, NULL);
           if (rc != RCL_RET_OK) {
               printf("Error publishing message node[%u].pub[%u]\n", n, p);
+          } else {
+              printf("node %u: published topic_%u\n", nodes[n].id, nodes[n].pub_names[p]);
           }
         }
-        printf("node %u: published %u messages\n", n, nodes[n].num_pubs);
         break;
       }
     }
@@ -279,18 +293,20 @@ int main(int argc, const char * argv[])
 
   //create nodes
   for (unsigned int n = 0; n < conf.num_nodes; n++) {
-    snprintf(node_name, NODE_NAME_SIZE, "node_%u", n);
+    snprintf(node_name, NODE_NAME_SIZE, "node_%u", conf.nodes[n]->id);
     printf("Debug: creating %s\n", node_name );
     nodes[n].rcl_node = rcl_create_node_wrapper(node_name, "", &init_obj); 
     if ( nodes[n].rcl_node == NULL) {
         printf("Error in rcl_create_node_wrapper.\n");
         return -1;
     }
+    nodes[n].id = conf.nodes[n]->id;
 
     // add publishers
     if ( conf.nodes[n]->num_pubs > 0) {
       nodes[n].num_pubs = conf.nodes[n]->num_pubs;
       nodes[n].pubs =  calloc ( conf.nodes[n]->num_pubs, sizeof(rcl_publisher_t*));
+      nodes[n].pub_names =  calloc ( conf.nodes[n]->num_pubs, sizeof(unsigned int));
 
       for(unsigned int p = 0; p < conf.nodes[n]->num_pubs; p++) {
         snprintf(topic_name, TOPIC_NAME_SIZE, "topic_%u", conf.nodes[n]->pub_names[p]);
@@ -299,6 +315,7 @@ int main(int argc, const char * argv[])
         nodes[n].pubs[p] = rcl_create_publisher_wrapper(nodes[n].rcl_node, 
           init_obj.allocator, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), 
           topic_name);
+        nodes[n].pub_names[p] = conf.nodes[n]->pub_names[p];
         if (nodes[n].pubs[p] == NULL) {
           printf("Error: Could not create publisher %s.\n", topic_name);
           return -1;
