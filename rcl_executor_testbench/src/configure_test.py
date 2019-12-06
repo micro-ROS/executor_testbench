@@ -47,7 +47,7 @@ import subprocess
 # if in a node there are no subscribers => rec_msg = 0
 
 def print_node(node):
-    (ID, PUB, SUB) = range(3)
+    (ID, PUB, SUB, PUB_MSG, REC_MSG) = range(5) 
     print("ID ", node[ID])
     print("PUB", node[PUB])
     print("SUB", node[SUB])
@@ -57,9 +57,9 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
        parameter: enum[A-F] type, enum[all, one, pub-sub] process_type, int num_topics, int num_pub_msg, int m
        retuns:
     '''
-    (ID, PUB, SUB, PUB_MSG, REC_MSG) = range(5) # used as index for node and process, therefore order matters!
+    (ID, PUB, SUB, PUB_MSG, REC_MSG) = range(5)
     node_list = []
-    empty_node = [0, [] ,[],0,0]
+    empty_node = [0,[],[],0,0]
     pub_list = []
     sub_list = []   
     node_id = 0 
@@ -243,7 +243,7 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
 
 
     # debug
-    print(node_list)
+    #print(node_list)
 
     print("{} {}".format("process_type:", process_type))
     process_list = []
@@ -260,11 +260,12 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
     elif process_type == 'pub-sub':
         print("One process for all publisher nodes, one process for all subscriber nodes\n")
         process_list=[[],[]]
+        (PUB_NODES, SUB_NODES) = range(2)
         for node in node_list:
             if len(node[PUB])>0 and len(node[SUB])==0:
-                process_list[PUB].append(node)
+                process_list[PUB_NODES].append(node)
             if len(node[PUB])==0 and len(node[SUB])>0:
-                 process_list[SUB].append(node)
+                 process_list[SUB_NODES].append(node)
             if len(node[PUB])>0 and len(node[SUB])>0:
                 raise ValueError("Error with process_type='pub-sub' a node which publishes and subscribes at the same time, is not supported.")
     else:
