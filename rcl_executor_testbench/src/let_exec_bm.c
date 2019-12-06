@@ -20,7 +20,7 @@
 
 /* TODO
 + one timer for each publisher
-- finish after number of published /subscribed topics
++ finish after number of published /subscribed topics
 - documentation
 */
 
@@ -40,6 +40,8 @@ typedef struct {
   rcl_subscription_t ** subs;  // list of subscriber pointers (length = num_subs)
   std_msgs__msg__String ** subs_msg; // list of msgs of the subscribers
   unsigned int * published_msgs; // list of counters for published messages
+  unsigned int max_published_msg; // maximum number of messages to publish for each publisher
+  unsigned int max_received_msg; // maximum number of messages to receive for each subscriber
 } rcl_node_wrapper_t;
 
 
@@ -50,6 +52,8 @@ typedef struct {
     unsigned int num_subs;
     unsigned int * pub_names;
     unsigned int * sub_names;
+    unsigned int max_published_msg;
+    unsigned int max_received_msg;
 } conf_node_t; 
 
 typedef struct {
@@ -57,27 +61,25 @@ typedef struct {
     // testbench finishes when all topics have been published 'max_published_msg' times
     // and all subscribed topics have been received 'max_subscribed_msg' times.
     // these values can be zero.
-    unsigned int max_published_msg; // number of messages per topic to publish
-    unsigned int max_subscribed_msg; // number of messages per topic to receive
     unsigned int period;  // rate converted into ms
     unsigned int msg_size;  // number of char
     unsigned int num_nodes;
     conf_node_t  * * nodes;
-    unsigned int total_num_pubs;
-    unsigned int total_num_subs;
+    unsigned int total_num_pubs; // computed
+    unsigned int total_num_subs; // computed
+    unsigned int total_max_received_msg; // computed
 } conf_t;
 
 static 
 void initialize_config(conf_t * conf){
   conf->rate = 0;
-  conf->max_published_msg = 0;
-  conf->max_subscribed_msg = 0;
   conf->period = 0;
   conf->msg_size = 0;
   conf->num_nodes = 0;
   conf->nodes = NULL;
   conf->total_num_pubs = 0;
   conf->total_num_subs = 0;
+  conf->total_max_received_msg = 0;
 }
 /* parses arguments and saves configuration in conf object
    memory is allocated with calloc for a node, list of publishers, list of subscribers
@@ -85,19 +87,19 @@ void initialize_config(conf_t * conf){
 
    return value: 0 success -1 failure
 */
-enum Testbench_arguments{PROG_NAME, RATE, MAX_PUB, MAX_SUB, MSG_SIZE, NUM_NODES, NODE_CONFIGS};
+enum Testbench_arguments{PROG_NAME, RATE, MSG_SIZE, NUM_NODES, NODE_CONFIGS};
 int parse_args(int argc, const char * argv[], conf_t * conf) {
   int i = 0;
   if (argc < 4) { 
     printf("Error: too few arguments missing: %d\n", 4-argc);
     printf("Usage: rate max_published_msg max_subscribed_msg message_size number_nodes \
-    ['node' id number_publisher number_subscriptions [topic_id]*]*\n \n \
+    ['node' id max_pub_msg max_rec_msg number_publisher number_subscriptions [topic_id]*]*\n \n \
     Note: for each node specify node-id, number of publishers(p) and number subscriptions(s). \n \
     Then follows a ordered list of topic-ids. The first p topic-id are topic names for the \
     publishers, the next s topic-ids are topic name for the subscriptions.\n \
-    Example 1: node 0 1 1 3 4 => node_0 with one publisher and one subscriptions \
-    publisher topic='topic_3', subscription topic='topic_4'\nExample 2: node 1 2 0 3 4 => \
-    node_1 with two publishers with the topic names 'topic_3' and 'topic_4'.\n"); 
+    Example 1: node 0 10 10 1 1 3 4 => node_0 with 10 msg to send and 10 msg to receive, one publisher and one subscriptions \
+    publisher topic='topic_3', subscription topic='topic_4'\nExample 2: node 1 10 0 2 0 3 4 => \
+    node_1 with two publishers with the topic names 'topic_3' and 'topic_4'. each is going to send 10 msg\n"); 
     return -1;
   }
 
@@ -113,16 +115,6 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
   }
   conf->period = (1000)/ conf->rate; // in milliseconds 
   // conversion errors => TODO use nanoseconds, but 1000 * 1000 * 1000 is too large for unsigned int!
-
-  if (sscanf (argv[MAX_PUB], "%u", &conf->max_published_msg) != 1) {
-    fprintf(stderr, "error - max_published_msg is not an integer.\n");
-    return -1;
-  }  
-
-  if (sscanf (argv[MAX_SUB], "%u", &conf->max_subscribed_msg) != 1) {
-  fprintf(stderr, "error - max_subscribed_msg is not an integer.\n");
-  return -1;
-}  
 
   if (sscanf (argv[MSG_SIZE], "%u", &conf->msg_size) != 1) {
     fprintf(stderr, "error - msg_size not an integer");
@@ -145,6 +137,19 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
         fprintf(stderr, "error - node-id not an integer");
         return -1;
       } 
+      i++;
+
+      if (sscanf (argv[i], "%u", &node->max_published_msg) != 1) {
+        fprintf(stderr, "error - node-id not an integer");
+        return -1;
+      } 
+      i++;
+
+      if (sscanf (argv[i], "%u", &node->max_received_msg) != 1) {
+        fprintf(stderr, "error - node-id not an integer");
+        return -1;
+      }
+      conf->total_max_received_msg += node->max_received_msg;
       i++;
 
       if (sscanf (argv[i], "%u", &node->num_pubs) != 1) {
@@ -195,16 +200,16 @@ int parse_args(int argc, const char * argv[], conf_t * conf) {
 
 static
 void print_configuration(conf_t * conf) {
-  printf("Arguments: rate %d max_pub %d max_sub %d msg_size %d #nodes %d\n", conf->rate, 
-     conf->max_published_msg, conf->max_subscribed_msg, conf->msg_size, conf->num_nodes);
-  printf("Total number pubs: %d\n", conf->total_num_pubs);
-  printf("Total number subs: %d\n", conf->total_num_subs);
+  printf("Arguments: rate %d msg_size %d #nodes %d\n", conf->rate, 
+     conf->msg_size, conf->num_nodes);
+  printf("Node summary: Total number publishers : %d\n", conf->total_num_pubs);
+  printf("              Total number subscribers: %d\n", conf->total_num_subs);
 
   for(unsigned int node_index = 0; node_index < conf->num_nodes; node_index++)
   {
     printf("node %u ", conf->nodes[node_index]->id);
     
-    printf("pub: ");
+    printf(" pub: ");
     for(unsigned int i=0; i < conf->nodes[node_index]->num_pubs; i++) {
       printf("%u ", conf->nodes[node_index]->pub_names[i]);
     }
@@ -214,6 +219,7 @@ void print_configuration(conf_t * conf) {
       printf("%u ", conf->nodes[node_index]->sub_names[i]);
     }
     printf("\n");
+    printf("      max_pub_msg %d max_rec_msg %d\n", conf->nodes[node_index]->max_published_msg, conf->nodes[node_index]->max_received_msg);
   }
 }
 
@@ -250,16 +256,15 @@ static rcl_node_wrapper_t * nodes;  // list of nodes
 static unsigned int num_nodes;  // necessary in timer_callback
 std_msgs__msg__String pub_msg;  // one message string for all publishers with user-defined length
 
-typedef struct {
 // for testbench management (i.e when to stop testbench)
-  unsigned int max_published_msgs; // configured
-  unsigned int number_publishers; // configured
-  unsigned int max_received_msgs; // configured
-  unsigned int finished_publishers; // status var
-  unsigned int received_msgs; // status var
+typedef struct {
+  unsigned int number_publishers;   // configured
+  unsigned int max_received_msgs;   // configured
+  unsigned int finished_publishers; // status variable
+  unsigned int received_msgs;       // status variable
 } test_setup_t;
-
 static test_setup_t test_setup;
+
 /***************************** CALLBACKS ***********************************/
 
 
@@ -295,7 +300,7 @@ timer_callback(rcl_timer_t * timer, int64_t last_call_time)
       for(unsigned int i=0; i<nodes[n].num_pubs && found == false; i++) {
         if (nodes[n].timers[i] == timer) {
           found = true;
-          if (nodes[n].published_msgs[i] < test_setup.max_published_msgs)              
+          if (nodes[n].published_msgs[i] < nodes[n].max_published_msg)              
           {
             rc = rcl_publish(nodes[n].pubs[i], &pub_msg, NULL);
             nodes[n].published_msgs[i]++;
@@ -303,7 +308,7 @@ timer_callback(rcl_timer_t * timer, int64_t last_call_time)
             // when all messages have been sent, then increment number of finished publisher
             // this is only incremented once per publisher, as in the next call to this 
             // timer_callback the above if-clause will evaluate false. 
-            if (nodes[n].published_msgs[i] == test_setup.max_published_msgs) {
+            if (nodes[n].published_msgs[i] == nodes[n].max_published_msg) {
               test_setup.finished_publishers++;
             }
 
@@ -323,24 +328,15 @@ timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 }
 
 
-static void initialize_testbench(conf_t * conf) {
-  // define how many messages to send for each publisher
-  test_setup.max_published_msgs = conf->max_published_msg;
-  // total number of publishers
-  test_setup.number_publishers = conf->total_num_pubs;
-  // define how many message to receive for all subscribers together
-  test_setup.max_received_msgs = conf->total_num_subs * conf->max_subscribed_msg;
+static void initialize_testbench() {
   // initialize status variables
   test_setup.finished_publishers = 0;
   test_setup.received_msgs = 0;
-
-  printf("test_setup.max_published_msgs = %d\n",  test_setup.max_published_msgs);
-  printf("test_setup.number_publishers = %d\n", test_setup.number_publishers);
-  printf("test_setup.max_received_msgs = %d\n", test_setup.max_received_msgs);
 }
+
 /* returns true, if
-  - each publisher has sent 'conf->max_published_msg' messages AND
-  - in total 'conf->total_num_subs * conf->max_subscribed_msg' have been received
+  - each publisher of node i has sent 'conf->node[i].max_published_msg' messages AND
+  - in total 'conf->total_max_received_msg' messages have been received
 
   otherwise false. 
   
@@ -348,17 +344,20 @@ static void initialize_testbench(conf_t * conf) {
   subscription callback for all subscribers. The only parameter is the message itself. As a quick fix, I am counting
   the total number of received messages.
   
-  The expected finish-criteria, that each subscriber has received conf->max_subscribed_msg, is not implemented, but only 
-  the relaxed criteria that all subscribers together have received conf->max_subscribed_msg * conf->total_num_pubs
+  The expected finish-criteria, that each subscriber has received node[i].max_received_msg, is not implemented, but only 
+  the relaxed criteria that all subscribers together have received \sum_i=0^(n-1) node[i].max_received_msg, where 
+  n = total number nodes
   
 */
-
-static bool work_to_do() {
-  if (test_setup.finished_publishers < test_setup.number_publishers ||
-      test_setup.received_msgs <  test_setup.max_received_msgs)
+static bool work_to_do(conf_t * conf) {
+  if (test_setup.finished_publishers < conf->total_num_pubs ||
+      test_setup.received_msgs <  conf->total_max_received_msg) {
+    //printf("work-to-do ");
     return true;
-  else 
+  }  else {
+    printf("...finished: publishers %d received msg %d\n", test_setup.finished_publishers, test_setup.received_msgs);
     return false;
+  }
 }
 
 /******************** MAIN PROGRAM *****************************************/
@@ -412,8 +411,11 @@ int main(int argc, const char * argv[]) {
         printf("Error in rcl_create_node_wrapper.\n");
         return -1;
     }
+    // general parameters
     nodes[n].id = conf.nodes[n]->id;
-
+    nodes[n].max_published_msg = conf.nodes[n]->max_published_msg;
+    nodes[n].max_received_msg = conf.nodes[n]->max_received_msg;
+    
     // add publishers
     if ( conf.nodes[n]->num_pubs > 0) {
       nodes[n].num_pubs = conf.nodes[n]->num_pubs;
@@ -517,9 +519,9 @@ int main(int argc, const char * argv[]) {
   ////////////////////////////////////////////////////////////////////////////
   // Run RCL Executor
   ////////////////////////////////////////////////////////////////////////////
-  initialize_testbench( &conf );
+  initialize_testbench();
 
-  while (work_to_do()) {
+  while (work_to_do(&conf)) {
     rcle_let_executor_spin_some(&exe, RCL_WAIT_TIMEOUT);
   }
   ////////////////////////////////////////////////////////////////////////////
