@@ -2,14 +2,14 @@
 Parameters:
 - package
 - binary
-- rate [Hz] 
+- rate [Hz]
+- num-published-msg [int]
 - msg-size [int]
 - topology-type [A,B,C,D,E,F]
 - process-type [one, pub-sub, all]
 - number-topics [int]
 - [number-subscriber] [int] 
 '''
-
 
 import sys
 import subprocess
@@ -20,31 +20,6 @@ import subprocess
 # - topology type
 # - process-type one, pub-sub, all
 # => save them in the node - rather then as global variables
-
-# specify it for each node
-# for topologies A-E: 
-# test case A: 
-#  pub_msg=n 
-#  rec_msg=n
-# test case B: 
-#  pub_msg=n 
-#  rec_msg=n
-# test case C: 
-#  pub_msg=n 
-#  rec_msg=n * number_publishers = n * m
-# test case D: 
-#  pub_msg=n 
-#  rec_msg=n * number_publishers = n * m
-# test case E: 
-#  pub_msg=n 
-#  rec_msg=n * number_publishers = number_topics * m
-# test case F: 
-#  pub_msg=n 
-#  rec_msg=n * number_publishers = number_topics * m
-
-# next filter
-# if in a node there are no publishers  => pub_msg = 0
-# if in a node there are no subscribers => rec_msg = 0
 
 def print_node(node):
     (ID, PUB, SUB, PUB_MSG, REC_MSG) = range(5) 
@@ -63,7 +38,7 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
     pub_list = []
     sub_list = []   
     node_id = 0 
-    print(empty_node)
+
     if num_topics < 0:
         raise ValueError('num_topics must be non-negative')
 
@@ -109,6 +84,8 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
         sub_list = []
         node[PUB]=pub_list
         node[SUB]=sub_list
+        node[PUB_MSG]=int(num_pub_msg)
+        node[REC_MSG]=0
         node_list.append(node)
 
         for i in range(num_topics):
@@ -119,6 +96,8 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
             sub_list = [str(i)]
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=0
+            node[REC_MSG]=int(num_pub_msg)
             node_list.append(node)
 
 
@@ -140,6 +119,8 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
             
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=int(num_pub_msg)
+            node[REC_MSG]=0
             node_list.append(node)
         
         # add subscriber nodes
@@ -154,14 +135,16 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
 
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=0
+            node[REC_MSG]=int(num_pub_msg) * int(num_publishers)
             node_list.append(node)
 
 
     elif type == 'D':
         print("Type: D")
         # add publisher nodes
-
-        for p in range(num_topics):
+        num_publishers=num_topics
+        for p in range(num_publishers):
             node = empty_node.copy()
             node[ID] = node_id
             node_id +=1            
@@ -170,9 +153,11 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
             pub_list.append(str(p))
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=int(num_pub_msg)
+            node[REC_MSG]=int(0)
             node_list.append(node)
         
-        # add subscriber nodes
+        # add subscriber node
         node = empty_node.copy()
         node[ID] = node_id
         node_id +=1        
@@ -183,12 +168,16 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
 
         node[PUB]=pub_list
         node[SUB]=sub_list
+        node[PUB_MSG]=0
+        node[REC_MSG]=int(num_pub_msg) * int(num_publishers)
         node_list.append(node)
     
     elif type == 'E':
         print("Type: E")
         # publishers
-        for p in range(num_topics):
+        num_publishers=num_topics
+        num_subscribers=m
+        for p in range(num_publishers):
             node = empty_node.copy()
             node[ID] = node_id
             node_id +=1            
@@ -197,19 +186,22 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
             pub_list.append(str(p))
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=int(num_pub_msg)
+            node[REC_MSG]=int(0)
             node_list.append(node)
         # subscribers
-        print("m " + str(m))
-        for s in range(m):
+        for s in range(num_subscribers):
             node = empty_node.copy()
             node[ID] = node_id
             node_id +=1            
             pub_list = []
             sub_list = []
-            for t in range (num_topics):
+            for t in range (num_publishers):
                 sub_list.append(str(t))
             node[PUB]=pub_list
             node[SUB]=sub_list
+            node[PUB_MSG]=int(0)
+            node[REC_MSG]=int(num_publishers)*int(num_pub_msg)
             node_list.append(node)
     
     elif type == 'F':    
@@ -224,19 +216,21 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
         pub_list = []
         sub_list = []
 
+        num_publishers=num_topics
+        num_subscribers=m
         # add publishers
-        for p in range(num_topics):
+        for p in range(num_publishers):
             pub_list.append(str(p))
         node[PUB]=pub_list
         
         # add subscribers
-        # m <=> number of subscribers per topic
-        print("m " + str(m))
-        for s in range(m):
-            for t in range (num_topics):
+
+        for s in range(num_subscribers):
+            for t in range (num_publishers):
                 sub_list.append(str(t))
-        node[PUB]=pub_list
         node[SUB]=sub_list
+        node[PUB_MSG]=int(num_pub_msg)
+        node[REC_MSG]=int(num_publishers)*int(num_pub_msg)*int(num_subscribers)
         node_list.append(node)  
     else:
         raise ValueError("type unknown. Possible options: [A,B,C,D,E,F]")
@@ -245,20 +239,20 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
     # debug
     #print(node_list)
 
-    print("{} {}".format("process_type:", process_type))
+    #print("{} {}".format("process_type:", process_type))
     process_list = []
     # put them into different processes
     if process_type == 'one':
-        print("All nodes are in one process.\n")
+        print("Process type: all nodes are in one process.")
         # nothing needs to be done: node_list can be taken as-is
         process_list = [ node_list ]
     elif process_type == 'all':
-        print("Every node is executed its own process.\n")
+        print("Process type: every node is executed its own process.")
         process_list=[]
         for node in node_list:
             process_list.append( [node] )
     elif process_type == 'pub-sub':
-        print("One process for all publisher nodes, one process for all subscriber nodes\n")
+        print("Process type: one process for all publishing nodes, one process for all subscribing nodes")
         process_list=[[],[]]
         (PUB_NODES, SUB_NODES) = range(2)
         for node in node_list:
@@ -280,6 +274,7 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
     # udpate documentation in README.md
     # - clarify pub/sub => publishing node , subscribing node
     # number timer = number publishers
+    print("Generated configuration:")
     cmd_list=[]
     for nodes in process_list:
         cmd = []
@@ -305,11 +300,11 @@ def topology(type, process_type, num_topics, num_pub_msg, m=0):
     return cmd_list
 
 
-
+# remember to update documentation at the top of the file as well.
 def main():
     if len(sys.argv[1:]) < 8:
         print("Missing arguments.")
-        print("args: executor-binary rate(Hz) num-published-msg(int) msg-size(int) topology-type(A-F) \n \
+        print("args: executor-package executor-binary rate(Hz) num-published-msg(int) msg-size(int) topology-type(A-F) \n \
         process-type(one,all,pub-sub) number-topics(int) [number-subscribers(int)]")
         return
 
@@ -327,7 +322,7 @@ def main():
         num_subs = int(sys.argv[9])
     else:
         num_subs = 0
-    print("{} {} {} {} {} {} {} {} {}".format(cmd_package, cmd_name, rate, num_pub_msg, msg_size, topology_type, process_type, num_topics, num_subs))
+    #print("{} {} {} {} {} {} {} {} {}".format(cmd_package, cmd_name, rate, num_pub_msg, msg_size, topology_type, process_type, num_topics, num_subs))
 
     cmd_list = topology(topology_type, process_type, num_topics, num_pub_msg, num_subs)
 

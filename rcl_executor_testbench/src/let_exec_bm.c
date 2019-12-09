@@ -18,10 +18,24 @@
 #include <std_msgs/msg/string.h>
 // #include <unistd.h> // for usleep
 
-/* TODO
+/* TODO (9.12.2019)
 + one timer for each publisher
-+ finish after number of published /subscribed topics
-- documentation
++ finish criteria
+  + update testbench.c : finish after number of published/subscibed topics
+  + update configuure_test.py: configuration with just one parameter #published_msg
+    #received_msg is computed, configuration per node (as a node might be called in a
+    seperate process)
+  - test it with all use-cases and with all, one, pub-sub option.
+    (6 topologies, 3 process-options, #topics, #pub_msg) => 18 cases
+  - rclcpp Executor (finish criteria)
+  - static rclcpp Executor (finish criteria)
+- one package for the command-line-parser (so it can be used by rcl-let-, rclcpp, static rclcpp executor)
+- repository setup
+   - put all scripts in one repository and push at micro-ros repository
+   - using the rcl-package from the ros2/rcl pull request (and not the one in this package)
+- execute tests
+- evaluate tests (performance, #function calls)
+- documentation on github
 */
 
 
