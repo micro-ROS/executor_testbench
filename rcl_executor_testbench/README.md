@@ -10,3 +10,5 @@ This package provides a script to generate multiple test cases for executors. Yo
 - number of subscriptions
 
 In a first step, command-line arguments are generated according the the configuration. In a second step, the rcl-executor is instantiated with the corresponding number of nodes, publishers, timers and subscriptions. 
+
+See [executor_benchmarking.pdf](src/executor_benchmarking.pdf) for an overview.
